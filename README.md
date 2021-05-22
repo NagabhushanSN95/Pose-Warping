@@ -3,6 +3,8 @@ Code to warp a frame from a source view to the target view, given the depth map 
 
 The warping is implemented in python using numpy package and has been vectorized. It uses inverse bilinear interpolation (which can be considered as a trivial form of splatting). 
 
+Differential warping code coming soon!
+
 Other implementations:
 1. [Reference View Synthesizer (RVS)](https://gitlab.com/mpeg-i-visual/rvs)
 2. [Open MVS](https://github.com/cdcseacave/openMVS)

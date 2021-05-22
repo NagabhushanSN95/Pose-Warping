@@ -50,8 +50,8 @@ def read_depth(path: Path) -> numpy.ndarray:
     return depth
 
 
-def warp_frame(frame1: numpy.ndarray, depth1: numpy.ndarray, intrinsic: numpy.ndarray,
-               transformation1: numpy.ndarray, transformation2: numpy.ndarray, is_image: bool = False):
+def forward_warp(frame1: numpy.ndarray, depth1: numpy.ndarray, intrinsic: numpy.ndarray,
+                 transformation1: numpy.ndarray, transformation2: numpy.ndarray, is_image: bool = False):
     """
     Warps the frame
     @return: warped_frame2, mask, trans_pos.
@@ -90,14 +90,14 @@ def warp_frame(frame1: numpy.ndarray, depth1: numpy.ndarray, intrinsic: numpy.nd
     trans_pos_ceil[:, :, 0] = numpy.clip(trans_pos_ceil[:, :, 0], a_min=0, a_max=w + 1)
     trans_pos_ceil[:, :, 1] = numpy.clip(trans_pos_ceil[:, :, 1], a_min=0, a_max=h + 1)
 
-    weight_nw = (trans_pos_offset[:, :, 1] - trans_pos_floor[:, :, 1]) * (
-            trans_pos_offset[:, :, 0] - trans_pos_floor[:, :, 0])
-    weight_sw = (trans_pos_ceil[:, :, 1] - trans_pos_offset[:, :, 1]) * (
-            trans_pos_offset[:, :, 0] - trans_pos_floor[:, :, 0])
-    weight_ne = (trans_pos_offset[:, :, 1] - trans_pos_floor[:, :, 1]) * (
-            trans_pos_ceil[:, :, 0] - trans_pos_offset[:, :, 0])
-    weight_se = (trans_pos_ceil[:, :, 1] - trans_pos_offset[:, :, 1]) * (
-            trans_pos_ceil[:, :, 0] - trans_pos_offset[:, :, 0])
+    weight_nw = (1 - (trans_pos_offset[:, :, 1] - trans_pos_floor[:, :, 1])) * \
+                (1 - (trans_pos_offset[:, :, 0] - trans_pos_floor[:, :, 0]))
+    weight_sw = (1 - (trans_pos_ceil[:, :, 1] - trans_pos_offset[:, :, 1])) * \
+                (1 - (trans_pos_offset[:, :, 0] - trans_pos_floor[:, :, 0]))
+    weight_ne = (1 - (trans_pos_offset[:, :, 1] - trans_pos_floor[:, :, 1])) * \
+                (1 - (trans_pos_ceil[:, :, 0] - trans_pos_offset[:, :, 0]))
+    weight_se = (1 - (trans_pos_ceil[:, :, 1] - trans_pos_offset[:, :, 1])) * \
+                (1 - (trans_pos_ceil[:, :, 0] - trans_pos_offset[:, :, 0]))
 
     weight_nw_3d = weight_nw[:, :, None]
     weight_sw_3d = weight_sw[:, :, None]
@@ -151,7 +151,7 @@ def demo1():
     depth1 = read_depth(depth1_path)
     intrinsic = camera_intrinsic_transform_05()
 
-    warped_frame2 = warp_frame(frame1, depth1, intrinsic, transformation1, transformation2)[0]
+    warped_frame2 = forward_warp(frame1, depth1, intrinsic, transformation1, transformation2)[0]
     skimage.io.imsave('frame1.png', frame1)
     skimage.io.imsave('frame2.png', frame2)
     skimage.io.imsave('frame2_warped.png', warped_frame2)
