@@ -1,9 +1,10 @@
 # Pose-Warping for View Synthesis / DIBR
 Code to warp a frame from a source view to the target view, given the depth map of source view, camera poses of both views and camera intrinsic matrix.
 
-The warping is implemented in python using numpy package and has been vectorized. It uses inverse bilinear interpolation (which can be considered as a trivial form of splatting). 
-
-Differential warping code coming soon!
+The warping is implemented in python using numpy/pytorch package and has been vectorized. 
+It uses inverse bilinear interpolation (which can be considered as a trivial form of splatting). 
+Pytorch implementation is differentiable.
+Also contains splatting/interpolation code given flow and/or depth.
 
 Other implementations:
 1. [Reference View Synthesizer (RVS)](https://gitlab.com/mpeg-i-visual/rvs)
