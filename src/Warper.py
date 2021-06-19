@@ -33,7 +33,7 @@ class Warper:
         h, w, _ = frame1.shape
         assert mask1.shape == (h, w)
 
-        trans_points1 = self.compute_transformed_points(frame1, depth1, transformation1, transformation2, intrinsic)
+        trans_points1 = self.compute_transformed_points(depth1, transformation1, transformation2, intrinsic)
         trans_coordinates = trans_points1[:, :, :2, 0] / trans_points1[:, :, 2:3, 0]
         trans_depth1 = trans_points1[:, :, 2, 0]
 
@@ -46,17 +46,12 @@ class Warper:
         return warped_frame2, mask2, warped_depth2, flow12
 
     @staticmethod
-    def compute_transformed_points(frame1: numpy.ndarray, depth1: numpy.ndarray, transformation1: numpy.ndarray,
+    def compute_transformed_points(depth1: numpy.ndarray, transformation1: numpy.ndarray,
                                    transformation2: numpy.ndarray, intrinsic: numpy.ndarray):
         """
         Computes transformed position for each pixel location
         """
-        h, w, _ = frame1.shape
-        assert depth1.shape == (h, w)
-        assert transformation1.shape == (4, 4)
-        assert transformation2.shape == (4, 4)
-        assert intrinsic.shape == (3, 3)
-
+        h, w, _ = depth1.shape
         transformation = numpy.matmul(transformation2, numpy.linalg.inv(transformation1))
 
         y1d = numpy.array(range(h))
@@ -91,8 +86,8 @@ class Warper:
         :param flow12: (h, w, 2)
         :param flow12_mask: (h,w): True if valid and False if invalid
         :param is_image: If true, the return array will be clipped to be in the range [0, 255] and type-casted to uint8
-        :return: warped_frame1: (h, w, c)
-                 mask1: (h, w): True if known and False if unknown
+        :return: warped_frame2: (h, w, c)
+                 mask2: (h, w): True if known and False if unknown
         """
         h, w, c = frame1.shape
         grid = self.create_grid(h, w)
@@ -156,8 +151,8 @@ class Warper:
             warped_frame2 = numpy.round(clipped_image).astype('uint8')
         return warped_frame2, mask
 
-    def backward_warp(self, frame2: numpy.ndarray, mask2: numpy.ndarray, flow12: numpy.ndarray,
-                      flow12_mask: numpy.ndarray, is_image: bool = False) -> Tuple[numpy.ndarray, numpy.ndarray]:
+    def bilinear_interpolation(self, frame2: numpy.ndarray, mask2: numpy.ndarray, flow12: numpy.ndarray,
+                               flow12_mask: numpy.ndarray, is_image: bool = False) -> Tuple[numpy.ndarray, numpy.ndarray]:
         """
         Using bilinear interpolation
         :param frame2: (h, w, c)
