@@ -10,6 +10,7 @@ Other implementations:
 1. [Reference View Synthesizer (RVS)](https://gitlab.com/mpeg-i-visual/rvs)
 2. [Open MVS](https://github.com/cdcseacave/openMVS)
 3. A splatting based differential warping has been implemented by [PyTorch 3D](https://github.com/facebookresearch/pytorch3d) which has been used in [SynSin](https://github.com/facebookresearch/synsin) 
+4. [Softmax Splatting](https://github.com/sniklaus/softmax-splatting)
 
 If you find this work useful, please cite it as 
 
