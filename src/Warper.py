@@ -7,7 +7,7 @@ import datetime
 import time
 import traceback
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Optional
 
 import numpy
 import skimage.io
@@ -17,41 +17,57 @@ import OpenEXR
 
 
 class Warper:
-    def forward_warp(self, frame1: numpy.ndarray, mask1: numpy.ndarray, depth1: numpy.ndarray,
-                     transformation1: numpy.ndarray, transformation2: numpy.ndarray, intrinsic: numpy.ndarray) -> \
-            Tuple[numpy.ndarray, numpy.ndarray, numpy.ndarray, numpy.ndarray]:
+    def forward_warp(self, frame1: numpy.ndarray, mask1: Optional[numpy.ndarray], depth1: numpy.ndarray,
+                     transformation1: numpy.ndarray, transformation2: numpy.ndarray, intrinsic1: numpy.ndarray,
+                     intrinsic2: Optional[numpy.ndarray]) -> Tuple[numpy.ndarray, numpy.ndarray, numpy.ndarray,
+                                                                   numpy.ndarray]:
         """
         Given a frame1 and global transformations transformation1 and transformation2, warps frame1 to next view using
         bilinear splatting.
         :param frame1: (h, w, 3) uint8 numpy array
-        :param mask1: (h, w) bool numpy array. Wherever mask1 is False, those pixels are ignored while warping
+        :param mask1: (h, w) bool numpy array. Wherever mask1 is False, those pixels are ignored while warping. Optional
         :param depth1: (h, w) float numpy array.
         :param transformation1: (4, 4) extrinsic transformation matrix of first view: [R, t; 0, 1]
         :param transformation2: (4, 4) extrinsic transformation matrix of second view: [R, t; 0, 1]
-        :param intrinsic: (3, 3) camera intrinsic matrix
+        :param intrinsic1: (3, 3) camera intrinsic matrix
+        :param intrinsic2: (3, 3) camera intrinsic matrix. Optional
         """
         h, w, _ = frame1.shape
+        if mask1 is None:
+            mask1 = numpy.ones(shape=(h, w), dtype=bool)
+        if intrinsic2 is None:
+            intrinsic2 = numpy.copy(intrinsic1)
+        assert frame1.shape == (h, w, 3)
         assert mask1.shape == (h, w)
+        assert depth1.shape == (h, w)
+        assert transformation1.shape == (4, 4)
+        assert transformation2.shape == (4, 4)
+        assert intrinsic1.shape == (3, 3)
+        assert intrinsic2.shape == (3, 3)
 
-        trans_points1 = self.compute_transformed_points(depth1, transformation1, transformation2, intrinsic)
+        trans_points1 = self.compute_transformed_points(depth1, transformation1, transformation2, intrinsic1,
+                                                        intrinsic2)
         trans_coordinates = trans_points1[:, :, :2, 0] / trans_points1[:, :, 2:3, 0]
         trans_depth1 = trans_points1[:, :, 2, 0]
 
         grid = self.create_grid(h, w)
         flow12 = trans_coordinates - grid
 
-        warped_frame2, mask2 = self.bilinear_splatting(frame1, mask1, trans_depth1, flow12, mask1, is_image=True)
-        warped_depth2 = self.bilinear_splatting(trans_depth1[:, :, None], mask1, trans_depth1, flow12, mask1,
+        warped_frame2, mask2 = self.bilinear_splatting(frame1, mask1, trans_depth1, flow12, None, is_image=True)
+        warped_depth2 = self.bilinear_splatting(trans_depth1[:, :, None], mask1, trans_depth1, flow12, None,
                                                 is_image=False)[0][:, :, 0]
         return warped_frame2, mask2, warped_depth2, flow12
 
     @staticmethod
     def compute_transformed_points(depth1: numpy.ndarray, transformation1: numpy.ndarray,
-                                   transformation2: numpy.ndarray, intrinsic: numpy.ndarray):
+                                   transformation2: numpy.ndarray, intrinsic1: numpy.ndarray,
+                                   intrinsic2: Optional[numpy.ndarray]):
         """
         Computes transformed position for each pixel location
         """
-        h, w, _ = depth1.shape
+        h, w = depth1.shape
+        if intrinsic2 is None:
+            intrinsic2 = numpy.copy(intrinsic1)
         transformation = numpy.matmul(transformation2, numpy.linalg.inv(transformation1))
 
         y1d = numpy.array(range(h))
@@ -61,35 +77,39 @@ class Warper:
         ones_4d = ones_2d[:, :, None, None]
         pos_vectors_homo = numpy.stack([x2d, y2d, ones_2d], axis=2)[:, :, :, None]
 
-        intrinsic_inv = numpy.linalg.inv(intrinsic)
-        intrinsic_4d = intrinsic[None, None]
-        intrinsic_inv_4d = intrinsic_inv[None, None]
+        intrinsic1_inv = numpy.linalg.inv(intrinsic1)
+        intrinsic1_inv_4d = intrinsic1_inv[None, None]
+        intrinsic2_4d = intrinsic2[None, None]
         depth_4d = depth1[:, :, None, None]
         trans_4d = transformation[None, None]
 
-        unnormalized_pos = numpy.matmul(intrinsic_inv_4d, pos_vectors_homo)
+        unnormalized_pos = numpy.matmul(intrinsic1_inv_4d, pos_vectors_homo)
         world_points = depth_4d * unnormalized_pos
         world_points_homo = numpy.concatenate([world_points, ones_4d], axis=2)
         trans_world_homo = numpy.matmul(trans_4d, world_points_homo)
         trans_world = trans_world_homo[:, :, :3]
-        trans_norm_points = numpy.matmul(intrinsic_4d, trans_world)
+        trans_norm_points = numpy.matmul(intrinsic2_4d, trans_world)
         return trans_norm_points
 
-    def bilinear_splatting(self, frame1: numpy.ndarray, mask1: numpy.ndarray, depth1: numpy.ndarray,
-                           flow12: numpy.ndarray, flow12_mask: numpy.ndarray, is_image: bool = False) -> \
+    def bilinear_splatting(self, frame1: numpy.ndarray, mask1: Optional[numpy.ndarray], depth1: numpy.ndarray,
+                           flow12: numpy.ndarray, flow12_mask: Optional[numpy.ndarray], is_image: bool = False) -> \
             Tuple[numpy.ndarray, numpy.ndarray]:
         """
         Using inverse bilinear interpolation based splatting
         :param frame1: (h, w, c)
-        :param mask1: (h, w): True if known and False if unknown
+        :param mask1: (h, w): True if known and False if unknown. Optional
         :param depth1: (h, w)
         :param flow12: (h, w, 2)
-        :param flow12_mask: (h,w): True if valid and False if invalid
+        :param flow12_mask: (h, w): True if valid and False if invalid. Optional
         :param is_image: If true, the return array will be clipped to be in the range [0, 255] and type-casted to uint8
         :return: warped_frame2: (h, w, c)
                  mask2: (h, w): True if known and False if unknown
         """
         h, w, c = frame1.shape
+        if mask1 is None:
+            mask1 = numpy.ones(shape=(h, w), dtype=bool)
+        if flow12_mask is None:
+            flow12_mask = numpy.ones(shape=(h, w), dtype=bool)
         grid = self.create_grid(h, w)
         trans_pos = flow12 + grid
 
@@ -151,19 +171,24 @@ class Warper:
             warped_frame2 = numpy.round(clipped_image).astype('uint8')
         return warped_frame2, mask
 
-    def bilinear_interpolation(self, frame2: numpy.ndarray, mask2: numpy.ndarray, flow12: numpy.ndarray,
-                               flow12_mask: numpy.ndarray, is_image: bool = False) -> Tuple[numpy.ndarray, numpy.ndarray]:
+    def bilinear_interpolation(self, frame2: numpy.ndarray, mask2: Optional[numpy.ndarray], flow12: numpy.ndarray,
+                               flow12_mask: Optional[numpy.ndarray], is_image: bool = False) -> \
+            Tuple[numpy.ndarray, numpy.ndarray]:
         """
         Using bilinear interpolation
         :param frame2: (h, w, c)
-        :param mask2: (h, w): True if known and False if unknown
+        :param mask2: (h, w): True if known and False if unknown. Optional
         :param flow12: (h, w, 2)
-        :param flow12_mask: (h,w): True if valid and False if invalid
+        :param flow12_mask: (h, w): True if valid and False if invalid. Optional
         :param is_image: If true, the return array will be clipped to be in the range [0, 255] and type-casted to uint8
         :return: warped_frame1: (h, w, c)
                  mask1: (h, w): True if known and False if unknown
         """
         h, w, c = frame2.shape
+        if mask2 is None:
+            mask2 = numpy.ones(shape=(h, w), dtype=bool)
+        if flow12_mask is None:
+            flow12_mask = numpy.ones(shape=(h, w), dtype=bool)
         grid = self.create_grid(h, w)
         trans_pos = flow12 + grid
 
@@ -249,7 +274,7 @@ class Warper:
             depth = numpy.load(path.as_posix())
         elif path.suffix == '.npz':
             with numpy.load(path.as_posix()) as depth_data:
-                depth = depth_data['arr_0']
+                depth = depth_data['depth']
         elif path.suffix == '.exr':
             exr_file = OpenEXR.InputFile(path.as_posix())
             raw_bytes = exr_file.channel('B', Imath.PixelType(Imath.PixelType.FLOAT))
@@ -284,10 +309,8 @@ def demo1():
     frame2 = warper.read_image(frame2_path)
     depth1 = warper.read_depth(depth1_path)
     intrinsic = warper.camera_intrinsic_transform()
-    h, w = frame1.shape
-    mask1 = numpy.ones(shape=(h, w), dtype=bool)
 
-    warped_frame2 = warper.forward_warp(frame1, mask1, depth1, transformation1, transformation2, intrinsic)[0]
+    warped_frame2 = warper.forward_warp(frame1, None, depth1, transformation1, transformation2, intrinsic, None)[0]
     skimage.io.imsave('frame1.png', frame1)
     skimage.io.imsave('frame2.png', frame2)
     skimage.io.imsave('frame2_warped.png', warped_frame2)
