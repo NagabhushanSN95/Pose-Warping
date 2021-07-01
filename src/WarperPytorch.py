@@ -191,7 +191,8 @@ class Warper:
         cropped_weights = warped_weights[:, :, 1:-1, 1:-1]
 
         mask = cropped_weights > 0
-        zero_tensor = torch.tensor(0, dtype=frame1.dtype, device=frame1.device)
+        zero_value = -1 if is_image else 0
+        zero_tensor = torch.tensor(zero_value, dtype=frame1.dtype, device=frame1.device)
         warped_frame2 = torch.where(mask, cropped_warped_frame / cropped_weights, zero_tensor)
         mask2 = mask.to(frame1)
 
@@ -267,7 +268,8 @@ class Warper:
              weight_ne * f2_ne * m2_ne + weight_se * f2_se * m2_se
         dr = weight_nw * m2_nw + weight_sw * m2_sw + weight_ne * m2_ne + weight_se * m2_se
 
-        zero_tensor = torch.tensor(0, dtype=nr.dtype, device=nr.device)
+        zero_value = -1 if is_image else 0
+        zero_tensor = torch.tensor(zero_value, dtype=nr.dtype, device=nr.device)
         warped_frame1 = torch.where(dr > 0, nr / dr, zero_tensor)
         mask1 = (dr > 0).to(frame2)
 
