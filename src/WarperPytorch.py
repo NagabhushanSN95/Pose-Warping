@@ -158,13 +158,13 @@ class Warper:
         log_depth1 = torch.log(1 + sat_depth1)
         depth_weights = torch.exp(log_depth1 / log_depth1.max() * 50)
 
-        weight_nw = prox_weight_nw * mask1 * flow12_mask / depth_weights
-        weight_sw = prox_weight_sw * mask1 * flow12_mask / depth_weights
-        weight_ne = prox_weight_ne * mask1 * flow12_mask / depth_weights
-        weight_se = prox_weight_se * mask1 * flow12_mask / depth_weights
+        weight_nw = torch.moveaxis(prox_weight_nw * mask1 * flow12_mask / depth_weights, [0, 1, 2, 3], [0, 3, 1, 2])
+        weight_sw = torch.moveaxis(prox_weight_sw * mask1 * flow12_mask / depth_weights, [0, 1, 2, 3], [0, 3, 1, 2])
+        weight_ne = torch.moveaxis(prox_weight_ne * mask1 * flow12_mask / depth_weights, [0, 1, 2, 3], [0, 3, 1, 2])
+        weight_se = torch.moveaxis(prox_weight_se * mask1 * flow12_mask / depth_weights, [0, 1, 2, 3], [0, 3, 1, 2])
 
         warped_frame = torch.zeros(size=(b, h + 2, w + 2, c), dtype=torch.float32).to(frame1)
-        warped_weights = torch.zeros(size=(b, 1, h + 2, w + 2), dtype=torch.float32).to(frame1)
+        warped_weights = torch.zeros(size=(b, h + 2, w + 2, 1), dtype=torch.float32).to(frame1)
 
         frame1_cl = torch.moveaxis(frame1, [0, 1, 2, 3], [0, 3, 1, 2])
         batch_indices = torch.arange(b)[:, None, None].to(frame1.device)
@@ -187,8 +187,9 @@ class Warper:
                                   weight_se, accumulate=True)
 
         warped_frame_cf = torch.moveaxis(warped_frame, [0, 1, 2, 3], [0, 2, 3, 1])
+        warped_weights_cf = torch.moveaxis(warped_weights, [0, 1, 2, 3], [0, 2, 3, 1])
         cropped_warped_frame = warped_frame_cf[:, :, 1:-1, 1:-1]
-        cropped_weights = warped_weights[:, :, 1:-1, 1:-1]
+        cropped_weights = warped_weights_cf[:, :, 1:-1, 1:-1]
 
         mask = cropped_weights > 0
         zero_value = -1 if is_image else 0
@@ -245,10 +246,10 @@ class Warper:
         prox_weight_se = (1 - (trans_pos_ceil[:, 1:2] - trans_pos_offset[:, 1:2])) * \
                          (1 - (trans_pos_ceil[:, 0:1] - trans_pos_offset[:, 0:1]))
 
-        weight_nw = prox_weight_nw * flow12_mask
-        weight_sw = prox_weight_sw * flow12_mask
-        weight_ne = prox_weight_ne * flow12_mask
-        weight_se = prox_weight_se * flow12_mask
+        weight_nw = torch.moveaxis(prox_weight_nw * flow12_mask, [0, 1, 2, 3], [0, 3, 1, 2])
+        weight_sw = torch.moveaxis(prox_weight_sw * flow12_mask, [0, 1, 2, 3], [0, 3, 1, 2])
+        weight_ne = torch.moveaxis(prox_weight_ne * flow12_mask, [0, 1, 2, 3], [0, 3, 1, 2])
+        weight_se = torch.moveaxis(prox_weight_se * flow12_mask, [0, 1, 2, 3], [0, 3, 1, 2])
 
         frame2_offset = F.pad(frame2, [1, 1, 1, 1])
         mask2_offset = F.pad(mask2, [1, 1, 1, 1])
