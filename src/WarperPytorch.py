@@ -2,7 +2,7 @@
 # Differentiable warper implemented in PyTorch. Warping is done on batches.
 # Tested on PyTorch 1.8.1
 # Author: Nagabhushan S N
-# Last Modified: 19/06/2021
+# Last Modified: 27/09/2021
 
 import datetime
 import time
@@ -20,7 +20,8 @@ import OpenEXR
 
 
 class Warper:
-    def __init__(self, device: str = 'gpu0'):
+    def __init__(self, resolution: tuple = None, device: str = 'gpu0'):
+        self.resolution = resolution
         self.device = self.get_device(device)
         return
 
@@ -42,6 +43,8 @@ class Warper:
         :param intrinsic1: (b, 3, 3) camera intrinsic matrix
         :param intrinsic2: (b, 3, 3) camera intrinsic matrix. Optional
         """
+        if self.resolution is not None:
+            assert frame1.shape[2:4] == self.resolution
         b, c, h, w = frame1.shape
         if mask1 is None:
             mask1 = torch.ones(size=(b, 1, h, w)).to(frame1)
@@ -64,7 +67,7 @@ class Warper:
         intrinsic1 = intrinsic1.to(self.device)
         intrinsic2 = intrinsic2.to(self.device)
 
-        trans_points1 = self.compute_transformed_points(depth1, transformation1, transformation2, intrinsic1, 
+        trans_points1 = self.compute_transformed_points(depth1, transformation1, transformation2, intrinsic1,
                                                         intrinsic2)
         trans_coordinates = trans_points1[:, :, :2, 0] / trans_points1[:, :, 2:3, 0]
         trans_depth1 = trans_points1[:, :, 2, 0]
@@ -77,12 +80,13 @@ class Warper:
                                                 is_image=False)[0][:, :, 0]
         return warped_frame2, mask2, warped_depth2, flow12
 
-    @staticmethod
-    def compute_transformed_points(depth1: torch.Tensor, transformation1: torch.Tensor, transformation2: torch.Tensor,
+    def compute_transformed_points(self, depth1: torch.Tensor, transformation1: torch.Tensor, transformation2: torch.Tensor,
                                    intrinsic1: torch.Tensor, intrinsic2: Optional[torch.Tensor]):
         """
         Computes transformed position for each pixel location
         """
+        if self.resolution is not None:
+            assert depth1.shape[2:4] == self.resolution
         b, _, h, w = depth1.shape
         if intrinsic2 is None:
             intrinsic2 = intrinsic1.clone()
@@ -124,6 +128,8 @@ class Warper:
         :return: warped_frame2: (b,c,h,w)
                  mask2: (b,1,h,w): 1 for known and 0 for unknown
         """
+        if self.resolution is not None:
+            assert frame1.shape[2:4] == self.resolution
         b, c, h, w = frame1.shape
         if mask1 is None:
             mask1 = torch.ones(size=(b, 1, h, w)).to(frame1)
@@ -216,6 +222,8 @@ class Warper:
         :return: warped_frame1: (b, c, h, w)
                  mask1: (b, 1, h, w): 1 for known and 0 for unknown
         """
+        if self.resolution is not None:
+            assert frame2.shape[2:4] == self.resolution
         b, c, h, w = frame2.shape
         if mask2 is None:
             mask2 = torch.ones(size=(b, 1, h, w)).to(frame2)

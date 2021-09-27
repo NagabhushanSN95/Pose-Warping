@@ -1,7 +1,7 @@
 # Shree KRISHNAya Namaha
 # Warps frame using pose info
 # Author: Nagabhushan S N
-# Last Modified: 19/06/2021
+# Last Modified: 27/09/2021
 
 import datetime
 import time
@@ -17,6 +17,10 @@ import OpenEXR
 
 
 class Warper:
+    def __init__(self, resolution: tuple = None):
+        self.resolution = resolution
+        return
+
     def forward_warp(self, frame1: numpy.ndarray, mask1: Optional[numpy.ndarray], depth1: numpy.ndarray,
                      transformation1: numpy.ndarray, transformation2: numpy.ndarray, intrinsic1: numpy.ndarray,
                      intrinsic2: Optional[numpy.ndarray]) -> Tuple[numpy.ndarray, numpy.ndarray, numpy.ndarray,
@@ -32,7 +36,9 @@ class Warper:
         :param intrinsic1: (3, 3) camera intrinsic matrix
         :param intrinsic2: (3, 3) camera intrinsic matrix. Optional
         """
-        h, w, _ = frame1.shape
+        if self.resolution is not None:
+            assert frame1.shape[:2] == self.resolution
+        h, w = frame1.shape
         if mask1 is None:
             mask1 = numpy.ones(shape=(h, w), dtype=bool)
         if intrinsic2 is None:
@@ -58,13 +64,14 @@ class Warper:
                                                 is_image=False)[0][:, :, 0]
         return warped_frame2, mask2, warped_depth2, flow12
 
-    @staticmethod
-    def compute_transformed_points(depth1: numpy.ndarray, transformation1: numpy.ndarray,
+    def compute_transformed_points(self, depth1: numpy.ndarray, transformation1: numpy.ndarray,
                                    transformation2: numpy.ndarray, intrinsic1: numpy.ndarray,
                                    intrinsic2: Optional[numpy.ndarray]):
         """
         Computes transformed position for each pixel location
         """
+        if self.resolution is not None:
+            assert depth1.shape == self.resolution
         h, w = depth1.shape
         if intrinsic2 is None:
             intrinsic2 = numpy.copy(intrinsic1)
@@ -105,6 +112,8 @@ class Warper:
         :return: warped_frame2: (h, w, c)
                  mask2: (h, w): True if known and False if unknown
         """
+        if self.resolution is not None:
+            assert frame1.shape[:2] == self.resolution
         h, w, c = frame1.shape
         if mask1 is None:
             mask1 = numpy.ones(shape=(h, w), dtype=bool)
@@ -116,6 +125,8 @@ class Warper:
         trans_pos_offset = trans_pos + 1
         trans_pos_floor = numpy.floor(trans_pos_offset).astype('int')
         trans_pos_ceil = numpy.ceil(trans_pos_offset).astype('int')
+        trans_pos_offset[:, :, 0] = numpy.clip(trans_pos_offset[:, :, 0], a_min=0, a_max=w + 1)
+        trans_pos_offset[:, :, 1] = numpy.clip(trans_pos_offset[:, :, 1], a_min=0, a_max=h + 1)
         trans_pos_floor[:, :, 0] = numpy.clip(trans_pos_floor[:, :, 0], a_min=0, a_max=w + 1)
         trans_pos_floor[:, :, 1] = numpy.clip(trans_pos_floor[:, :, 1], a_min=0, a_max=h + 1)
         trans_pos_ceil[:, :, 0] = numpy.clip(trans_pos_ceil[:, :, 0], a_min=0, a_max=w + 1)
@@ -144,8 +155,8 @@ class Warper:
         weight_ne_3d = weight_ne[:, :, None]
         weight_se_3d = weight_se[:, :, None]
 
-        warped_image = numpy.zeros(shape=(h + 2, w + 2, c), dtype=numpy.float32)
-        warped_weights = numpy.zeros(shape=(h + 2, w + 2), dtype=numpy.float32)
+        warped_image = numpy.zeros(shape=(h + 2, w + 2, c), dtype=numpy.float64)
+        warped_weights = numpy.zeros(shape=(h + 2, w + 2), dtype=numpy.float64)
 
         numpy.add.at(warped_image, (trans_pos_floor[:, :, 1], trans_pos_floor[:, :, 0]), frame1 * weight_nw_3d)
         numpy.add.at(warped_image, (trans_pos_ceil[:, :, 1], trans_pos_floor[:, :, 0]), frame1 * weight_sw_3d)
@@ -184,6 +195,8 @@ class Warper:
         :return: warped_frame1: (h, w, c)
                  mask1: (h, w): True if known and False if unknown
         """
+        if self.resolution is not None:
+            assert frame2.shape[:2] == self.resolution
         h, w, c = frame2.shape
         if mask2 is None:
             mask2 = numpy.ones(shape=(h, w), dtype=bool)
