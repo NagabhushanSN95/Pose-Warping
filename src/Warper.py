@@ -12,9 +12,6 @@ from typing import Tuple, Optional
 import numpy
 import skimage.io
 
-import Imath
-import OpenEXR
-
 
 class Warper:
     def __init__(self, resolution: tuple = None):
@@ -38,7 +35,7 @@ class Warper:
         """
         if self.resolution is not None:
             assert frame1.shape[:2] == self.resolution
-        h, w = frame1.shape
+        h, w = frame1.shape[:2]
         if mask1 is None:
             mask1 = numpy.ones(shape=(h, w), dtype=bool)
         if intrinsic2 is None:
@@ -276,7 +273,12 @@ class Warper:
 
     @staticmethod
     def read_image(path: Path) -> numpy.ndarray:
-        image = skimage.io.imread(path.as_posix())
+        if path.suffix in ['.jpg', '.png', '.bmp']:
+            image = skimage.io.imread(path.as_posix())
+        elif path.suffix == '.npy':
+            image = numpy.load(path.as_posix())
+        else:
+            raise RuntimeError(f'Unknown image format: {path.as_posix()}')
         return image
 
     @staticmethod
@@ -289,6 +291,9 @@ class Warper:
             with numpy.load(path.as_posix()) as depth_data:
                 depth = depth_data['depth']
         elif path.suffix == '.exr':
+            import Imath
+            import OpenEXR
+
             exr_file = OpenEXR.InputFile(path.as_posix())
             raw_bytes = exr_file.channel('B', Imath.PixelType(Imath.PixelType.FLOAT))
             depth_vector = numpy.frombuffer(raw_bytes, dtype=numpy.float32)
@@ -296,13 +301,13 @@ class Warper:
             width = exr_file.header()['displayWindow'].max.x + 1 - exr_file.header()['displayWindow'].min.x
             depth = numpy.reshape(depth_vector, (height, width))
         else:
-            raise RuntimeError(f'Unknown depth format: {path.suffix}')
+            raise RuntimeError(f'Unknown depth format: {path.as_posix()}')
         return depth
 
     @staticmethod
     def camera_intrinsic_transform(capture_width=1920, capture_height=1080, patch_start_point: tuple = (0, 0)):
         start_y, start_x = patch_start_point
-        camera_intrinsics = numpy.eye(4)
+        camera_intrinsics = numpy.eye(3)
         camera_intrinsics[0, 0] = 2100
         camera_intrinsics[0, 2] = capture_width / 2.0 - start_x
         camera_intrinsics[1, 1] = 2100
@@ -313,9 +318,19 @@ class Warper:
 def demo1():
     frame1_path = Path('../Data/frame1.png')
     frame2_path = Path('../Data/frame2.png')
-    depth1_path = Path('../Data/depth1.exr')
-    transformation1 = numpy.eye(4)
-    transformation2 = numpy.eye(4)
+    depth1_path = Path('../Data/depth1.npy')
+    transformation1 = numpy.array([
+        4.067366123199462891e-01, 9.135454893112182617e-01, 2.251522164442576468e-05, -1.571802258491516113e+00,
+        -7.961163669824600220e-02, 3.546993434429168701e-02, -9.961947202682495117e-01, 1.842712044715881348e+00,
+        -9.100699424743652344e-01, 4.051870703697204590e-01, 8.715576678514480591e-02, -2.255212306976318359e+00,
+        0.000000000000000000e+00, 0.000000000000000000e+00, 0.000000000000000000e+00, 1.000000000000000000e+00
+    ]).reshape(4, 4)
+    transformation2 = numpy.array([
+        4.067366123199462891e-01, 9.135454893112182617e-01, 2.251522164442576468e-05, -1.616834521293640137e+00,
+        -7.961163669824600220e-02, 3.546993434429168701e-02, -9.961947202682495117e-01, 1.848096847534179688e+00,
+        -9.100699424743652344e-01, 4.051870703697204590e-01, 8.715576678514480591e-02, -2.275809526443481445e+00,
+        0.000000000000000000e+00, 0.000000000000000000e+00, 0.000000000000000000e+00, 1.000000000000000000e+00
+    ]).reshape(4, 4)
 
     warper = Warper()
     frame1 = warper.read_image(frame1_path)
